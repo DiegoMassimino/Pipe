@@ -328,15 +328,10 @@ tr:hover td{background:rgba(255,255,255,.035)}
     <div class="card">
       <h3>Painel de reuniões da semana</h3>
       <p class="meta" id="agendaSemanaLabel" style="margin-bottom:12px"></p>
-      <div class="import-area">
-        <label for="agendaFileInput" class="import-btn">📥 Importar arquivo Excel</label>
-        <input type="file" id="agendaFileInput" class="import-file" accept=".xlsx,.xls,.csv">
-        <span id="agendaImportStatus" class="import-status">Base carregada: agendas da semana.xlsx. Você também pode importar novo Excel para atualizar a tabela.</span>
-      </div>
       <div class="table-wrap">
         <table id="tblReunioesAgendadas"></table>
       </div>
-      <p class="meta" style="margin-top:12px">Esta aba sempre mostra a semana atual (segunda a sexta), independente do filtro de calendário do topo — só o consultor e a busca continuam valendo aqui. Ao importar novo Excel, o painel lê Data/Hora, Tipo, Empresa, Tag/Oportunidade e Consultor. A coluna Técnico é editável e possui botão Salvar em cada reunião, ficando armazenada neste navegador.</p>
+      <p class="meta" style="margin-top:12px">Esta aba sempre mostra a semana atual (segunda a sexta), independente do filtro de calendário do topo — só o consultor e a busca continuam valendo aqui. Os dados vêm direto do CRM/Pipe Run (Dashboard Principal), usando a data de Início de cada reunião. A coluna Técnico é editável e possui botão Salvar em cada reunião, ficando armazenada neste navegador.</p>
     </div>
   </section>
 
@@ -1886,17 +1881,15 @@ function refresh(){
   // =========================
   // REUNIÕES AGENDADAS
   // =========================
-  const agendaFonteBase = (typeof AGENDA_IMPORTADA !== 'undefined' && AGENDA_IMPORTADA && AGENDA_IMPORTADA.length)
-    ? AGENDA_IMPORTADA
-    : DATA.filter(d => includesTipo(d, [
-        'reuniao agendada',
-        '1° reuniao','1º reuniao',
-        '2° reuniao','2º reuniao',
-        '3° reuniao','3º reuniao',
-        '4° reuniao','4º reuniao',
-        '5° reuniao','5º reuniao',
-        'remarcacao de agenda'
-      ]));
+  const agendaFonteBase = DATA.filter(d => includesTipo(d, [
+    'reuniao agendada',
+    '1° reuniao','1º reuniao',
+    '2° reuniao','2º reuniao',
+    '3° reuniao','3º reuniao',
+    '4° reuniao','4º reuniao',
+    '5° reuniao','5º reuniao',
+    'remarcacao de agenda'
+  ]));
 
   const semanaAtualAgenda = obterSemanaAtual();
   const filtroInicioAgenda = semanaAtualAgenda.inicio;

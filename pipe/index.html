@@ -966,7 +966,7 @@ let TECNICOS_REUNIOES = JSON.parse(localStorage.getItem('gaiga_tecnicos_reunioes
 
 function agendaKey(r){
   return [
-    r.dataHora || r.data || '',
+    r.inicioHora || r.inicio || r.dataHora || r.data || '',
     r.tipo || '',
     r.empresa || '',
     r.consultor || '',
@@ -1490,6 +1490,7 @@ function normalizeGenericCRMRows(rows){
       dataHora:dt && !isNaN(dt) ? dt.toISOString() : String(dataRaw||''),
       mes:dt && !isNaN(dt) ? dt.toISOString().slice(0,7) : '',
       inicio:dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString().slice(0,10) : '',
+      inicioHora:dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString() : '',
       tag:String(tag||'Sem tag').trim(),
       empresa:String(empresa||'Sem empresa').trim(),
       cidade:String(cidade||'').trim(),
@@ -1660,6 +1661,7 @@ async function sincronizarPipeRun(silencioso){
         dataHora: dt && !isNaN(dt) ? dt.toISOString() : '',
         mes: dt && !isNaN(dt) ? dt.toISOString().slice(0,7) : '',
         inicio: dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString().slice(0,10) : '',
+        inicioHora: dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString() : '',
         tag: deal.title ? String(deal.title).trim() : 'Sem tag',
         empresa: String(empresa).trim(),
         cidade: '',
@@ -1902,16 +1904,17 @@ function refresh(){
   const filtroConsultorAgenda = document.getElementById('consultorFilter').value;
   const filtroBuscaAgenda = norm(document.getElementById('searchFilter').value);
 
-  const agendaFonte = agendaFonteBase.filter(d =>
-    (!filtroInicioAgenda || d.data >= filtroInicioAgenda) &&
-    (!filtroFimAgenda || d.data <= filtroFimAgenda) &&
-    (filtroConsultorAgenda === 'all' || d.consultor === filtroConsultorAgenda) &&
-    (!filtroBuscaAgenda || [d.tipo,d.consultor,d.tag,d.empresa,d.cidade,d.uf,d.tecnico].some(v => norm(v).includes(filtroBuscaAgenda)))
-  );
+  const agendaFonte = agendaFonteBase.filter(d =>{
+    const dataEfetiva = d.inicio || d.data;
+    return (!filtroInicioAgenda || dataEfetiva >= filtroInicioAgenda) &&
+      (!filtroFimAgenda || dataEfetiva <= filtroFimAgenda) &&
+      (filtroConsultorAgenda === 'all' || d.consultor === filtroConsultorAgenda) &&
+      (!filtroBuscaAgenda || [d.tipo,d.consultor,d.tag,d.empresa,d.cidade,d.uf,d.tecnico].some(v => norm(v).includes(filtroBuscaAgenda)));
+  });
 
   const agendaOrdenada = [...agendaFonte]
-    .filter(d => d && (d.dataHora || d.data))
-    .sort((a,b) => new Date(a.dataHora || a.data) - new Date(b.dataHora || b.data));
+    .filter(d => d && (d.inicioHora || d.inicio || d.dataHora || d.data))
+    .sort((a,b) => new Date(a.inicioHora || a.inicio || a.dataHora || a.data) - new Date(b.inicioHora || b.inicio || b.dataHora || b.data));
 
   const agendaEmpresas = new Set(agendaOrdenada.map(x => x.empresa).filter(Boolean));
   const agendaConsultores = new Set(agendaOrdenada.map(x => x.consultor).filter(Boolean));
@@ -1920,7 +1923,7 @@ function refresh(){
   hojeAgenda.setHours(0,0,0,0);
   const hojeAgendaStr = toISODate(hojeAgenda);
 
-  const agendaHojeCount = agendaOrdenada.filter(x => x.data === hojeAgendaStr).length;
+  const agendaHojeCount = agendaOrdenada.filter(x => (x.inicio || x.data) === hojeAgendaStr).length;
 
   if(document.getElementById('kpiAgendaTotal')){
     document.getElementById('kpiAgendaTotal').textContent = fmt.format(agendaOrdenada.length);
@@ -1948,7 +1951,7 @@ function refresh(){
       const key = agendaKey(r);
       const tecnico = TECNICOS_REUNIOES[key] || r.tecnico || '';
       return [
-        fmtDateTime(r.dataHora || r.data),
+        fmtDateTime(r.inicioHora || r.inicio || r.dataHora || r.data),
         r.tipo || '-',
         r.empresa || '-',
         r.tag || '-',

@@ -1615,7 +1615,7 @@ async function sincronizarPipeRun(){
   const status = document.getElementById('globalImportStatus');
   const wrap = document.getElementById('piperunProgressWrap');
 
-  if(!confirm('Isso vai buscar as atividades e negociações direto do Pipe Run e SUBSTITUIR os dados atuais do Dashboard Principal e de Oportunidades Perdidas. Pode levar alguns minutos — não feche esta aba. Continuar?')) return;
+  if(!confirm('Isso vai buscar as atividades e negociações do ANO DE 2026 direto do Pipe Run e SUBSTITUIR os dados atuais do Dashboard Principal e de Oportunidades Perdidas. Pode levar alguns minutos — não feche esta aba. Continuar?')) return;
 
   try{
     if(status) status.textContent = 'Sincronizando com Pipe Run... isso pode levar alguns minutos. Não feche esta aba.';
@@ -1638,6 +1638,12 @@ async function sincronizarPipeRun(){
 
     const atividades = await piperunFetchTudo('activities', (p,tp,c,t)=>atualizarProgressoPiperun('Atividades', p, tp, c, t));
 
+    // Limita o histórico sincronizado (evita payloads gigantes que estouram o
+    // tempo limite de gravação do Supabase ao clicar em "Salvar Projeto").
+    const PIPERUN_ANO_LIMITE = '2026';
+    const dataCorteISO = PIPERUN_ANO_LIMITE + '-01-01';
+    const dataFimISO = PIPERUN_ANO_LIMITE + '-12-31';
+
     const novoData = atividades.map(a=>{
       const deal = dealPorId[a.deal_id] || {};
       const consultor = nomeConsultorPorId[a.owner_id] || 'Não informado';
@@ -1656,7 +1662,7 @@ async function sincronizarPipeRun(){
         cidade: '',
         uf: ''
       };
-    }).filter(d=>d.data);
+    }).filter(d=>d.data && d.data >= dataCorteISO && d.data <= dataFimISO);
 
     const novoLostData = negociacoes.filter(d=>d.lost_reason_id).map(d=>{
       const consultor = (d.owner && d.owner.name) || nomeConsultorPorId[d.owner_id] || 'Não informado';
@@ -1670,7 +1676,7 @@ async function sincronizarPipeRun(){
         consultor: String(consultor).trim(),
         tag: d.title ? String(d.title).trim() : 'Sem oportunidade/tag'
       };
-    });
+    }).filter(d=>!d.data || (d.data >= dataCorteISO && d.data <= dataFimISO));
 
     DATA = novoData;
     LOST_DATA = novoLostData;

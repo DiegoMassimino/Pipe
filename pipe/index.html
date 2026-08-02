@@ -313,8 +313,8 @@ tr:hover td{background:rgba(255,255,255,.035)}
     </div>
 
     <div class="grid two" style="margin-top:16px">
-      <div class="card"><h3>Região com maior volume de contatos</h3><canvas id="chartRegiao"></canvas></div>
-      <div class="card"><h3>Produtos / serviços mais oferecidos</h3><canvas id="chartProdutosOferecidos"></canvas></div>
+      <div class="card"><h3>Região com maior volume de contatos</h3><p class="meta" id="destaqueEstadoMaisProcurado" style="margin-bottom:10px"></p><canvas id="chartRegiao"></canvas></div>
+      <div class="card"><h3>Produtos / serviços mais oferecidos</h3><p class="meta" id="destaqueServicoMaisOferecido" style="margin-bottom:10px"></p><canvas id="chartProdutosOferecidos"></canvas></div>
     </div>
 
   </section>
@@ -1960,6 +1960,26 @@ function refresh(){
   chart('chartTipo','doughnut',byTipo.map(x=>x[0]),byTipo.map(x=>x[1]));
   const byTag=topEntries(groupBy(arr,d=>d.tag),10);
   chart('chartTags','bar',byTag.map(x=>x[0]),byTag.map(x=>x[1]));
+
+  // Produtos / serviços mais oferecidos: as tags mais utilizadas no período (top 8, doughnut pra facilitar leitura proporcional)
+  const byTagOferecidos=topEntries(groupBy(arr,d=>d.tag),8);
+  chart('chartProdutosOferecidos','doughnut',byTagOferecidos.map(x=>x[0]),byTagOferecidos.map(x=>x[1]));
+  const destaqueServico = document.getElementById('destaqueServicoMaisOferecido');
+  if(destaqueServico){
+    destaqueServico.innerHTML = byTagOferecidos.length
+      ? `Mais oferecido: <b>${byTagOferecidos[0][0]}</b> (${fmt.format(byTagOferecidos[0][1])} registros)`
+      : 'Sem dados suficientes no período.';
+  }
+
+  // Região com maior volume de contatos: ranking de estados (UF) — mostra o estado mais procurado
+  const byUf=topEntries(groupBy(arr.filter(d=>d.uf), d=>d.uf), 10);
+  chart('chartRegiao','bar',byUf.map(x=>x[0]),byUf.map(x=>x[1]));
+  const destaqueEstado = document.getElementById('destaqueEstadoMaisProcurado');
+  if(destaqueEstado){
+    destaqueEstado.innerHTML = byUf.length
+      ? `Estado mais procurado: <b>${byUf[0][0]}</b> (${fmt.format(byUf[0][1])} contatos)`
+      : 'Sem dados de estado no período.';
+  }
 
   const ligEf=arr.filter(d=>includesTipo(d,['ligacao efetiva'])).length;
   const tent=arr.filter(d=>includesTipo(d,['tentativa'])).length;

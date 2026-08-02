@@ -1760,8 +1760,9 @@ function handleGlobalImport(evt){
 // ========== Sincronização com Pipe Run (via proxy serverless /api/piperun) ==========
 const PIPERUN_PROXY_URL = '/api/piperun';
 
-async function piperunFetchPagina(resource, pagina){
-  const resp = await fetch(`${PIPERUN_PROXY_URL}?resource=${encodeURIComponent(resource)}&page=${pagina||1}`);
+async function piperunFetchPagina(resource, pagina, extra){
+  const extraQS = extra ? '&' + extra : '';
+  const resp = await fetch(`${PIPERUN_PROXY_URL}?resource=${encodeURIComponent(resource)}&page=${pagina||1}${extraQS}`);
   let json;
   try{
     json = await resp.json();
@@ -1774,12 +1775,12 @@ async function piperunFetchPagina(resource, pagina){
   return json;
 }
 
-async function piperunFetchTudo(resource, onProgresso){
+async function piperunFetchTudo(resource, onProgresso, extra){
   let pagina = 1;
   let todos = [];
   let totalPaginas = 1;
   do{
-    const json = await piperunFetchPagina(resource, pagina);
+    const json = await piperunFetchPagina(resource, pagina, extra);
     todos = todos.concat(Array.isArray(json.data) ? json.data : []);
     totalPaginas = (json.meta && json.meta.total_pages) ? json.meta.total_pages : 1;
     if(onProgresso) onProgresso(pagina, totalPaginas, todos.length, (json.meta && json.meta.total) || todos.length);
@@ -1822,9 +1823,16 @@ async function sincronizarPipeRun(silencioso){
     const empresaPorId = {};
     empresas.forEach(e=>{ empresaPorId[e.id] = e.name; });
 
-    const negociacoes = await piperunFetchTudo('deals', (p,tp,c,t)=>atualizarProgressoPiperun('Negociações', p, tp, c, t));
+    const negociacoes = await piperunFetchTudo('deals', (p,tp,c,t)=>atualizarProgressoPiperun('Negociações', p, tp, c, t), 'with=tags');
     const dealPorId = {};
     negociacoes.forEach(d=>{ dealPorId[d.id] = d; });
+
+    const tagDoDeal = (deal) => {
+      if(deal && Array.isArray(deal.tags) && deal.tags.length){
+        return deal.tags.map(t=>t.name).filter(Boolean).join(', ');
+      }
+      return '';
+    };
 
     const atividades = await piperunFetchTudo('activities', (p,tp,c,t)=>atualizarProgressoPiperun('Atividades', p, tp, c, t));
 
@@ -1848,7 +1856,7 @@ async function sincronizarPipeRun(silencioso){
         mes: dt && !isNaN(dt) ? dt.toISOString().slice(0,7) : '',
         inicio: dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString().slice(0,10) : '',
         inicioHora: dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString() : '',
-        tag: deal.title ? String(deal.title).trim() : 'Sem tag',
+        tag: tagDoDeal(deal) || 'Sem tag',
         empresa: String(empresa).trim(),
         cidade: '',
         uf: ''
@@ -1865,7 +1873,7 @@ async function sincronizarPipeRun(silencioso){
         etapa: etapaPorId[d.stage_id] || 'Etapa não informada',
         motivo: 'Motivo não detalhado (Pipe Run não retorna o texto do motivo neste endpoint)',
         consultor: String(consultor).trim(),
-        tag: d.title ? String(d.title).trim() : 'Sem oportunidade/tag'
+        tag: tagDoDeal(d) || 'Sem oportunidade/tag'
       };
     }).filter(d=>!d.data || (d.data >= dataCorteISO && d.data <= dataFimISO));
 

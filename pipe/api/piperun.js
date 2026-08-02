@@ -5,7 +5,7 @@
 //
 // Como usar (chamado pelo próprio painel):
 //   /api/piperun?resource=activities&page=1
-//   /api/piperun?resource=deals&page=3
+//   /api/piperun?resource=deals&page=3&with=tags
 //   /api/piperun?resource=companies&page=1
 //   /api/piperun?resource=users
 //   /api/piperun?resource=stages&page=2
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { resource, page } = req.query;
+  const { resource, page, with: withParam } = req.query;
 
   if (!resource || !RECURSOS_PERMITIDOS.includes(resource)) {
     res.status(400).json({
@@ -52,7 +52,10 @@ export default async function handler(req, res) {
   }
 
   const paginaNum = Number(page) > 0 ? Number(page) : 1;
-  const url = `https://api.pipe.run/v1/${resource}?token=${encodeURIComponent(token)}&show=200&page=${paginaNum}`;
+  let url = `https://api.pipe.run/v1/${resource}?token=${encodeURIComponent(token)}&show=200&page=${paginaNum}`;
+  if (withParam) {
+    url += `&with=${encodeURIComponent(withParam)}`;
+  }
 
   try {
     const resposta = await fetch(url);

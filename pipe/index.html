@@ -55,6 +55,8 @@ tr:hover td{background:rgba(255,255,255,.035)}
 .alert.danger{border-color:rgba(239,107,107,.35);background:rgba(239,107,107,.08)}
 .alert.warn{border-color:rgba(240,189,94,.35);background:rgba(240,189,94,.08)}
 .alert.info{border-color:rgba(122,167,255,.35);background:rgba(122,167,255,.08)}
+.trend-up{color:#8be9a1;font-weight:700}
+.trend-down{color:#ff8b8b;font-weight:700}
 .meta{color:var(--muted);font-size:12px;line-height:1.6}
 .progress{height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
 .progress span{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:99px}
@@ -287,6 +289,20 @@ tr:hover td{background:rgba(255,255,255,.035)}
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Contratos Enviados','contratosEnviados')"><div class="label">Contratos enviados</div><div class="value" id="kpiContratosEnviados">0</div><div class="sub">minutas de contrato registradas</div></div>
       <div class="card kpi feature-kpi clickable-kpi" onclick="abrirResumoIndicador('Contratos Assinados','contratosAssinados')"><div class="label">Contratos Assinados</div><div class="value" id="kpiContratosAssinadosDash">0</div><div class="sub">grandeza de fechamento no período</div></div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Comparativo entre meses</h3>
+      <p class="meta" style="margin-bottom:12px">Escolha dois meses para comparar o desempenho comercial e ver o que melhorou ou piorou. Respeita o filtro de consultor e busca do topo, mas ignora o filtro de calendário (os meses são escolhidos aqui).</p>
+      <div class="filters" style="margin-bottom:12px">
+        <select id="compMesA" onchange="atualizarComparativoMeses()"></select>
+        <select id="compMesB" onchange="atualizarComparativoMeses()"></select>
+      </div>
+      <div class="grid two">
+        <div><canvas id="chartComparativoMeses"></canvas></div>
+        <div class="table-wrap"><table id="tblComparativoMeses"></table></div>
+      </div>
+      <div id="comparativoMesesInsights" style="margin-top:16px"></div>
+    </div>
     <div class="grid two">
       <div class="card"><h3>Evolução diária de registros</h3><canvas id="chartDaily"></canvas></div>
       <div class="card"><h3>Ranking por consultor</h3><canvas id="chartConsultor"></canvas></div>
@@ -308,9 +324,9 @@ tr:hover td{background:rgba(255,255,255,.035)}
     <div class="grid kpis">
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Ligações Efetivas','ligacoesEfetivas')"><div class="label">Ligações efetivas</div><div class="value" id="kpiLigEf">0</div><div class="sub">principal indicador de esforço ativo</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Tentativas','tentativas')"><div class="label">Tentativas</div><div class="value" id="kpiTent">0</div><div class="sub">contatos não efetivados</div></div>
-      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Influenciadores','influenciadores')"><div class="label">Influenciadores</div><div class="value" id="kpiInfluenciadores">0</div><div class="sub">contato + novo contato com influenciador</div></div>
+      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Influenciadores','influenciadores')"><div class="label">Influenciadores</div><div class="value" id="kpiInfluenciadores">0</div><div class="sub">apenas "Contato com Influenciador"</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Novos Contatos','novosContatos')"><div class="label">Novos Contatos</div><div class="value" id="kpiNovosContatos">0</div><div class="sub">novo contato + com decisor + influenciador</div></div>
-      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Decisores','decisores')"><div class="label">Decisores</div><div class="value" id="kpiDecisor">0</div><div class="sub">contato + novo contato com decisor</div></div>
+      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Decisores','decisores')"><div class="label">Decisores</div><div class="value" id="kpiDecisor">0</div><div class="sub">apenas "Contato com Decisor"</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirModalContratos()"><div class="label">Contratos</div><div class="value" id="kpiContratos">0</div><div class="sub">clique para ver empresas fechadas</div></div>
     </div>
     <div class="grid two">
@@ -1301,6 +1317,7 @@ function rebuildConsultorFilter(){
   nomes.forEach(c=>sel.insertAdjacentHTML('beforeend',`<option value="${c}">${c}</option>`));
   if([...sel.options].some(o=>o.value===current)) sel.value=current;
   rebuildColabCompareSelects(nomes);
+  rebuildComparativoMesesSelects();
 }
 
 function rebuildColabCompareSelects(nomes){
@@ -1350,6 +1367,177 @@ function colabMetrics(nome, arr){
   const empresas=unique(a,d=>d.empresa);
   return {nome, total:a.length, ligacoes, tentativas, influenciadores, decisores, reunioesAgendadas, remarcacoes, reunioesRealizadas, noShow, canceladas, propostas, contratosEnviados, contratosAssinados, convLig, empresas};
 }
+
+// ========== Comparativo entre meses (Dashboard Principal) ==========
+const NOMES_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function formatarMesLabel(mes){
+  if(!mes || !mes.includes('-')) return mes || '—';
+  const [ano, mesNum] = mes.split('-');
+  const idx = parseInt(mesNum,10) - 1;
+  const nome = NOMES_MESES_PT[idx] || mesNum;
+  return `${nome}/${ano}`;
+}
+
+function obterMesesDisponiveis(){
+  return [...new Set(DATA.map(d=>d.mes).filter(Boolean))].sort();
+}
+
+function rebuildComparativoMesesSelects(){
+  const selA = document.getElementById('compMesA');
+  const selB = document.getElementById('compMesB');
+  if(!selA || !selB) return;
+  const meses = obterMesesDisponiveis();
+  const atualA = selA.value, atualB = selB.value;
+  selA.innerHTML = '';
+  selB.innerHTML = '';
+  meses.forEach(m=>{
+    selA.insertAdjacentHTML('beforeend', `<option value="${m}">${formatarMesLabel(m)}</option>`);
+    selB.insertAdjacentHTML('beforeend', `<option value="${m}">${formatarMesLabel(m)}</option>`);
+  });
+  if(meses.length){
+    const anteriorA = meses.includes(atualA) ? atualA : null;
+    const anteriorB = meses.includes(atualB) ? atualB : null;
+    if(anteriorA && anteriorB && anteriorA !== anteriorB){
+      selA.value = anteriorA;
+      selB.value = anteriorB;
+    }else{
+      selA.value = meses.length>=2 ? meses[meses.length-2] : meses[meses.length-1];
+      selB.value = meses[meses.length-1];
+    }
+  }
+}
+
+function metricasDoMes(mes){
+  const c = document.getElementById('consultorFilter')?.value || 'all';
+  const q = norm(document.getElementById('searchFilter')?.value || '');
+  const arr = DATA.filter(d =>
+    d.mes === mes &&
+    (c==='all' || d.consultor===c) &&
+    (!q || [d.tipo,d.consultor,d.tag,d.empresa,d.cidade,d.uf].some(v=>norm(v).includes(q)))
+  );
+  const ligacoes=arr.filter(d=>includesTipo(d,['ligacao efetiva'])).length;
+  const tentativas=arr.filter(d=>includesTipo(d,['tentativa'])).length;
+  const novosContatos=arr.filter(d=>includesTipo(d,['novo contato'])).length;
+  const influenciadores=arr.filter(d=>tipoExato(d,'Contato com Influenciador')).length;
+  const decisores=arr.filter(d=>tipoExato(d,'Contato com Decisor')).length;
+  const reunioesAgendadas=arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+  const remarcacoes=arr.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
+  const reunioesRealizadas=arr.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length;
+  const noShow=arr.filter(d=>includesTipo(d,['no show'])).length;
+  const canceladas=arr.filter(d=>includesTipo(d,['reuniao cancelada','cancelada'])).length;
+  const propostas=arr.filter(d=>includesTipo(d,['proposta'])).length;
+  const contratosEnviados=arr.filter(d=>includesTipo(d,['minuta de contrato','contrato enviado'])).length;
+  const contratosAssinados=arr.filter(d=>includesTipo(d,['contrato assinado'])).length;
+  const convLig=ligacoes ? (reunioesAgendadas/ligacoes)*100 : 0;
+  return {mes, total:arr.length, ligacoes, tentativas, novosContatos, influenciadores, decisores, reunioesAgendadas, remarcacoes, reunioesRealizadas, noShow, canceladas, propostas, contratosEnviados, contratosAssinados, convLig};
+}
+
+function variacaoPercentual(anterior, atual){
+  if(anterior === 0) return atual === 0 ? 0 : 100;
+  return ((atual - anterior) / anterior) * 100;
+}
+
+function atualizarComparativoMeses(){
+  const selA = document.getElementById('compMesA');
+  const selB = document.getElementById('compMesB');
+  const insightsEl = document.getElementById('comparativoMesesInsights');
+  if(!selA || !selB) return;
+
+  const mesA = selA.value, mesB = selB.value;
+  if(!mesA || !mesB){
+    table('tblComparativoMeses', ['Métrica','Mês A','Mês B','Variação'], [['Sem meses suficientes na base para comparar.','—','—','—']]);
+    if(insightsEl) insightsEl.innerHTML = '';
+    return;
+  }
+
+  const mA = metricasDoMes(mesA);
+  const mB = metricasDoMes(mesB);
+  const labelA = formatarMesLabel(mesA);
+  const labelB = formatarMesLabel(mesB);
+
+  const metricas = [
+    {label:'Registros totais', a:mA.total, b:mB.total},
+    {label:'Ligações efetivas', a:mA.ligacoes, b:mB.ligacoes},
+    {label:'Tentativas', a:mA.tentativas, b:mB.tentativas},
+    {label:'Novos Contatos', a:mA.novosContatos, b:mB.novosContatos},
+    {label:'Influenciadores', a:mA.influenciadores, b:mB.influenciadores},
+    {label:'Decisores', a:mA.decisores, b:mB.decisores},
+    {label:'Reuniões agendadas', a:mA.reunioesAgendadas, b:mB.reunioesAgendadas},
+    {label:'Remarcação de agenda', a:mA.remarcacoes, b:mB.remarcacoes},
+    {label:'Reuniões realizadas', a:mA.reunioesRealizadas, b:mB.reunioesRealizadas},
+    {label:'No Show', a:mA.noShow, b:mB.noShow, menorMelhor:true},
+    {label:'Reuniões canceladas', a:mA.canceladas, b:mB.canceladas, menorMelhor:true},
+    {label:'Propostas enviadas', a:mA.propostas, b:mB.propostas},
+    {label:'Contratos enviados', a:mA.contratosEnviados, b:mB.contratosEnviados},
+    {label:'Contratos assinados', a:mA.contratosAssinados, b:mB.contratosAssinados},
+    {label:'Conversão Ligação → Reunião', a:mA.convLig, b:mB.convLig, pct:true}
+  ];
+
+  const rows = metricas.map(m=>{
+    const variacao = variacaoPercentual(m.a, m.b);
+    const melhorou = m.menorMelhor ? variacao < 0 : variacao > 0;
+    const pioroou = m.menorMelhor ? variacao > 0 : variacao < 0;
+    const seta = variacao === 0 ? '—' : (melhorou ? '▲' : (pioroou ? '▼' : '—'));
+    const corClasse = variacao === 0 ? '' : (melhorou ? 'trend-up' : 'trend-down');
+    const fmtA = m.pct ? m.a.toFixed(1).replace('.',',')+'%' : fmt.format(m.a);
+    const fmtB = m.pct ? m.b.toFixed(1).replace('.',',')+'%' : fmt.format(m.b);
+    return [m.label, fmtA, fmtB, `<span class="${corClasse}">${seta} ${Math.abs(variacao).toFixed(1).replace('.',',')}%</span>`];
+  });
+  table('tblComparativoMeses', ['Métrica', labelA, labelB, 'Variação'], rows);
+
+  const metricasChave = ['Registros totais','Ligações efetivas','Reuniões agendadas','Reuniões realizadas','Propostas enviadas','Contratos assinados'];
+  const dadosChave = metricas.filter(m=>metricasChave.includes(m.label));
+  destroy('chartComparativoMeses');
+  const ctx = document.getElementById('chartComparativoMeses');
+  if(ctx && typeof Chart !== 'undefined'){
+    charts['chartComparativoMeses'] = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels: dadosChave.map(m=>m.label),
+        datasets: [
+          {label:labelA, data:dadosChave.map(m=>m.a), backgroundColor:'#63b3ed'},
+          {label:labelB, data:dadosChave.map(m=>m.b), backgroundColor:'#4fd1c5'}
+        ]
+      },
+      options:{
+        responsive:true,
+        plugins:{legend:{labels:{color:'#dbe7ea'}}},
+        scales:{
+          x:{ticks:{color:'#aebdc4'}, grid:{color:'rgba(255,255,255,.05)'}},
+          y:{ticks:{color:'#aebdc4'}, grid:{color:'rgba(255,255,255,.07)'}, beginAtZero:true}
+        }
+      }
+    });
+  }
+
+  if(insightsEl){
+    const LIMIAR = 5; // variações menores que 5% não entram nos insights, pra evitar ruído
+    const pontosBons = [];
+    const pontosAtencao = [];
+    metricas.forEach(m=>{
+      const variacao = variacaoPercentual(m.a, m.b);
+      if(Math.abs(variacao) < LIMIAR) return;
+      const melhorou = m.menorMelhor ? variacao < 0 : variacao > 0;
+      const fmtA = m.pct ? m.a.toFixed(1).replace('.',',')+'%' : fmt.format(m.a);
+      const fmtB = m.pct ? m.b.toFixed(1).replace('.',',')+'%' : fmt.format(m.b);
+      const texto = `<b>${m.label}</b>: de ${fmtA} (${labelA}) para ${fmtB} (${labelB}) — ${variacao>0?'subiu':'caiu'} ${Math.abs(variacao).toFixed(1).replace('.',',')}%.`;
+      if(melhorou) pontosBons.push(texto); else pontosAtencao.push(texto);
+    });
+
+    const listaBons = pontosBons.length ? pontosBons.map(t=>`<div class="alert info">🏆 ${t}</div>`).join('') : '<div class="alert info">Nenhuma métrica com melhora relevante (acima de 5%) neste comparativo.</div>';
+    const listaAtencao = pontosAtencao.length ? pontosAtencao.map(t=>`<div class="alert warn">⚠ ${t}</div>`).join('') : '<div class="alert info">Nenhuma métrica com piora relevante (acima de 5%) neste comparativo.</div>';
+
+    insightsEl.innerHTML = `
+      <p class="meta" style="margin-bottom:4px"><strong>Pontos que fomos bem</strong></p>
+      ${listaBons}
+      <p class="meta" style="margin:12px 0 4px"><strong>Pontos de atenção para melhorar</strong></p>
+      ${listaAtencao}
+    `;
+  }
+}
+
+
 
 function atualizarComparativoColaboradores(){
   const selA=document.getElementById('colabCompareA');
@@ -1965,6 +2153,7 @@ function refresh(){
   refreshTimesheet();
 
   atualizarComparativoColaboradores();
+  atualizarComparativoMeses();
 
   table('tblBase',['Campo','Situação'],[
     ['Total de registros',fmt.format(DATA.length)],['Período total',(()=>{ const ds=DATA.map(d=>d.data).filter(Boolean).sort(); return ds.length ? `${ds[0].split('-').reverse().join('/')} a ${ds[ds.length-1].split('-').reverse().join('/')}` : '—'; })()],

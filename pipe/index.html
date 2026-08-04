@@ -262,8 +262,8 @@ tr:hover td{background:rgba(255,255,255,.035)}
       <select id="periodFilter">
         <option value="all">Todo o período</option>
         <option value="day">Dia</option>
-        <option value="week">Semana</option>
-        <option value="month" selected>Mês</option>
+        <option value="week" selected>Semana</option>
+        <option value="month">Mês</option>
         <option value="custom">Período personalizado</option>
       </select>
       <div class="date-range-box">
@@ -322,7 +322,7 @@ tr:hover td{background:rgba(255,255,255,.035)}
   <section id="indicadores" class="section">
     <div id="indicadorConsultorSelecionado" class="selected-consultor-title"></div>
     <div class="grid kpis">
-      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Ligações Efetivas','ligacoesEfetivas')"><div class="label">Ligações efetivas</div><div class="value" id="kpiLigEf">0</div><div class="sub">principal indicador de esforço ativo</div></div>
+      <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Ligações Efetivas','ligacoesEfetivas')"><div class="label">Ligações efetivas</div><div class="value" id="kpiLigEf">0</div><div class="sub">ligações + influenciadores + novos contatos + decisores</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Tentativas','tentativas')"><div class="label">Tentativas</div><div class="value" id="kpiTent">0</div><div class="sub">contatos não efetivados</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Influenciadores','influenciadores')"><div class="label">Influenciadores</div><div class="value" id="kpiInfluenciadores">0</div><div class="sub">apenas "Contato com Influenciador"</div></div>
       <div class="card kpi clickable-kpi" onclick="abrirResumoIndicador('Novos Contatos','novosContatos')"><div class="label">Novos Contatos</div><div class="value" id="kpiNovosContatos">0</div><div class="sub">novo contato + com decisor + influenciador</div></div>
@@ -1051,24 +1051,29 @@ function monthLabel(m){ if(m==='all') return 'Todo o período'; const [y,mm]=m.s
 function parseDateOnly(v){ if(!v) return null; const d=new Date(v+'T00:00:00'); return isNaN(d)?null:d; }
 function isoDate(d){ return d ? d.toISOString().slice(0,10) : ''; }
 function setDefaultPeriod(){
-  const allDates=DATA.map(d=>d.data).filter(Boolean).sort();
-  const end=allDates.length ? parseDateOnly(allDates[allDates.length-1]) : new Date();
-  const start=new Date(end); start.setDate(1);
   const s=document.getElementById('dateStartFilter'), e=document.getElementById('dateEndFilter');
-  if(s && !s.value) s.value=isoDate(start);
-  if(e && !e.value) e.value=isoDate(end);
+  if(!s || !e) return;
+  if(!s.value || !e.value){
+    const semana=obterSemanaAtual();
+    if(!s.value) s.value=semana.inicio;
+    if(!e.value) e.value=semana.fim;
+  }
 }
 function applyPeriodPreset(){
-  const type=document.getElementById('periodFilter')?.value || 'all';
+  const type=document.getElementById('periodFilter')?.value || 'week';
   const s=document.getElementById('dateStartFilter'), e=document.getElementById('dateEndFilter');
   if(!s||!e) return;
+  if(type==='all'){s.value='';e.value='';return;}
+  if(type==='custom') return;
+  if(type==='week'){
+    const semana=obterSemanaAtual();
+    s.value=semana.inicio; e.value=semana.fim;
+    return;
+  }
   const allDates=DATA.map(d=>d.data).filter(Boolean).sort();
   const ref=allDates.length ? parseDateOnly(allDates[allDates.length-1]) : new Date();
   let start=null, end=new Date(ref);
-  if(type==='all'){s.value='';e.value='';return;}
-  if(type==='custom') return;
   if(type==='day') start=new Date(ref);
-  if(type==='week'){start=new Date(ref); start.setDate(start.getDate()-6);}
   if(type==='month'){start=new Date(ref); start.setDate(1);}
   s.value=isoDate(start); e.value=isoDate(end);
 }
@@ -1259,7 +1264,7 @@ function rowsForIndicador(kind){
   const arr=filtered();
   const map={
     total:arr,
-    ligacoesEfetivas:arr.filter(d=>includesTipo(d,['ligacao efetiva'])),
+    ligacoesEfetivas:arr.filter(d=>includesTipo(d,['ligacao efetiva']) || tipoExato(d,'Contato com Influenciador') || tipoExato(d,'Contato com Decisor') || includesTipo(d,['novo contato'])),
     tentativas:arr.filter(d=>includesTipo(d,['tentativa'])),
     influenciadores:arr.filter(d=>tipoExato(d,'Contato com Influenciador')),
     decisores:arr.filter(d=>tipoExato(d,'Contato com Decisor')),
@@ -1998,7 +2003,7 @@ function refresh(){
       tituloConsultor.textContent='Consultor selecionado: '+consultorSelecionado;
     }
   }
-  document.getElementById('kpiLigEf').textContent=fmt.format(ligEf);
+  document.getElementById('kpiLigEf').textContent=fmt.format(ligEf + influenciadores + decisor + novosContatos);
   document.getElementById('kpiTent').textContent=fmt.format(tent);
   if(document.getElementById('kpiInfluenciadores')) document.getElementById('kpiInfluenciadores').textContent=fmt.format(influenciadores);
   document.getElementById('kpiDecisor').textContent=fmt.format(decisor);

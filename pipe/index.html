@@ -2369,27 +2369,39 @@ async function liberarAcessoPainel(){
   refresh();
   await carregarUltimoProjetoBanco(true);
   await verificarSincronizacaoAutomaticaPipeRun();
+  iniciarTemporizadorSincronizacaoPipeRun();
 }
+
+const PIPERUN_LIMITE_MINUTOS = 15;
+let piperunTemporizadorId = null;
 
 async function verificarSincronizacaoAutomaticaPipeRun(){
-  const LIMITE_HORAS = 1;
   const agora = new Date();
   const ultima = PIPERUN_ULTIMA_SINCRONIZACAO ? new Date(PIPERUN_ULTIMA_SINCRONIZACAO) : null;
-  const horasDesdeUltima = (ultima && !isNaN(ultima)) ? (agora - ultima) / (1000*60*60) : Infinity;
+  const minutosDesdeUltima = (ultima && !isNaN(ultima)) ? (agora - ultima) / (1000*60) : Infinity;
 
-  if(horasDesdeUltima < LIMITE_HORAS){
-    console.log(`Pipe Run: última sincronização há ${horasDesdeUltima.toFixed(2)}h — dentro do limite de ${LIMITE_HORAS}h, não sincroniza agora.`);
+  if(minutosDesdeUltima < PIPERUN_LIMITE_MINUTOS){
+    console.log(`Pipe Run: última sincronização há ${minutosDesdeUltima.toFixed(1)}min — dentro do limite de ${PIPERUN_LIMITE_MINUTOS}min, não sincroniza agora.`);
     return;
   }
-  console.log('Pipe Run: iniciando sincronização automática (última foi há mais de '+LIMITE_HORAS+'h, ou nunca sincronizou).');
+  console.log('Pipe Run: iniciando sincronização automática (última foi há mais de '+PIPERUN_LIMITE_MINUTOS+'min, ou nunca sincronizou).');
   await sincronizarPipeRun(true);
 }
+
+function iniciarTemporizadorSincronizacaoPipeRun(){
+  if(piperunTemporizadorId) return; // já está rodando, evita duplicar o temporizador
+  piperunTemporizadorId = setInterval(() => {
+    verificarSincronizacaoAutomaticaPipeRun();
+  }, PIPERUN_LIMITE_MINUTOS * 60 * 1000);
+}
+
 
 async function logoutGaiga(){
   const db = getSupabaseGaiga();
   if(db){
     try{ await db.auth.signOut(); }catch(e){ console.error(e); }
   }
+  if(piperunTemporizadorId){ clearInterval(piperunTemporizadorId); piperunTemporizadorId = null; }
   const root = document.getElementById('appRoot');
   const gate = document.getElementById('loginGate');
   const statusEl = document.getElementById('loginStatus');

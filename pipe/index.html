@@ -223,16 +223,16 @@ tr:hover td{background:rgba(255,255,255,.035)}
 <aside class="sidebar">
   <div class="brand"><div class="logo">G</div><div><h1>Gaiga Advocacia</h1><p>Painel Executivo CRM</p></div></div>
   <nav class="nav">
-    <button class="active" data-tab="dashboard">▣ Dashboard principal</button>
-    <button data-tab="indicadores">◈ Indicadores de desempenho</button>
-    <button data-tab="reunioesAgenda">▦ Reuniões da Semana</button>
-    <button data-tab="perdidas">⊘ Oportunidades perdidas</button>
-    <button data-tab="pontos">⚠ Pontos de atenção</button>
-    <button data-tab="colaborador">◎ Análise por colaborador</button>
-    <button data-tab="atividade">☷ Análise por atividade</button>
-    <button data-tab="tempoAtividade">⏱ Tempo por Atividade</button>
+    <button class="active" data-tab="dashboard">📊 Dashboard principal</button>
+    <button data-tab="indicadores">🎯 Indicadores de desempenho</button>
+    <button data-tab="reunioesAgenda">📅 Reuniões da Semana</button>
+    <button data-tab="perdidas">🚫 Oportunidades perdidas</button>
+    <button data-tab="pontos">⚠️ Pontos de atenção</button>
+    <button data-tab="colaborador">👥 Análise por colaborador</button>
+    <button data-tab="atividade">📈 Análise por atividade</button>
+    <button data-tab="tempoAtividade">⏱️ Tempo por Atividade</button>
     <button data-tab="faturamento">💰 Faturamento Comercial</button>
-    <button data-tab="base">ⓘ Base e metodologia</button>
+    <button data-tab="base">ℹ️ Base e metodologia</button>
   </nav>
   <div class="sidebar-footer">
     Dados antigos removidos. Fonte atual: <b>mes junho 2026.xlsx</b><br>
@@ -451,6 +451,7 @@ tr:hover td{background:rgba(255,255,255,.035)}
       <div class="import-area">
         <label for="timesheetFileInput" class="import-btn">📥 Importar arquivo Excel</label>
         <input type="file" id="timesheetFileInput" class="import-file" accept=".xlsx,.xls,.csv" onchange="handleTimesheetImport(event)">
+        <button type="button" class="action-btn secondary" onclick="limparTimesheetPainel()">🧹 Limpar Tempo por Atividade</button>
         <span id="timesheetImportStatus" class="import-status">Nenhum arquivo importado ainda.</span>
       </div>
     </div>
@@ -656,6 +657,21 @@ function grupoDaCategoriaTimesheet(categoria){
   return 'Outras'; // categoria não mapeada em nenhum dos 3 grupos (ex: Outras atividades)
 }
 
+function horasParaDecimal(valorBruto){
+  if(valorBruto instanceof Date){
+    if(isNaN(valorBruto.getTime())) return 0;
+    // Célula formatada como horário/duração no Excel (ex: 01:30). A leitura converte
+    // isso para uma data baseada na época do Excel (30/12/1899) — recalculamos as
+    // horas a partir da diferença em relação a essa época, em vez de usar o valor
+    // bruto da data (que geraria números absurdos, tipo milhares de horas).
+    const epocaExcel = Date.UTC(1899, 11, 30);
+    const diffMs = valorBruto.getTime() - epocaExcel;
+    return diffMs > 0 ? diffMs / 3600000 : 0;
+  }
+  const n = Number(valorBruto);
+  return isNaN(n) ? 0 : n;
+}
+
 function categorizarAtividadeTimesheet(atividadeRaw){
   const semCodigo = String(atividadeRaw||'').replace(/^[\d.]+\s*-\s*/,'');
   const nome = norm(semCodigo);
@@ -703,7 +719,7 @@ function handleTimesheetImport(evt){
         if(!colaborador || norm(colaborador).startsWith('total geral')) continue;
         const atividadeRaw = colAtiv>=0 ? String(row[colAtiv]||'').trim() : '';
         if(!atividadeRaw) continue;
-        const horas = Number(row[colHoras]) || 0;
+        const horas = horasParaDecimal(row[colHoras]);
         const dt = colData>=0 ? excelDateToJSDate(row[colData]) : null;
         registros.push({
           consultor: colaborador,
@@ -721,8 +737,9 @@ function handleTimesheetImport(evt){
       }
 
       TIMESHEET_DATA = registros;
-      refreshTimesheet();
-      if(status) status.textContent = `${registros.length} lançamento(s) importado(s) de ${file.name}.`;
+      atualizarPeriodoAposImportarTimesheet();
+      refresh();
+      if(status) status.textContent = `${registros.length} lançamento(s) importado(s) de ${file.name}. Período do calendário ajustado automaticamente.`;
     }catch(err){
       console.error(err);
       if(status) status.textContent = 'Erro ao importar '+file.name+'. Verifique se é um Excel válido.';
@@ -784,14 +801,13 @@ function refreshTimesheet(){
     return {consultor:c, total, porCategoria, porGrupo, pctComercial};
   });
 
-  const headersTbl = ['Colaborador', ...categorias, ...TS_NOMES_GRUPOS.map(g=>`${g} (h)`), 'Total'];
+  const headersTbl = ['Colaborador', ...categorias, 'Total'];
   const rowsTbl = porConsultor.slice().sort((a,b)=>b.total-a.total).map(p=>[
     p.consultor,
     ...p.porCategoria.map(h=>h? h.toFixed(1).replace('.',',') : '—'),
-    ...TS_NOMES_GRUPOS.map(g=>(p.porGrupo[g]||0).toFixed(1).replace('.',',')),
     p.total.toFixed(1).replace('.',',')
   ]);
-  table('tblTempoColabAtividade', headersTbl, rowsTbl.length ? rowsTbl : [['Nenhum dado importado ainda.', ...categorias.map(()=>'—'), ...TS_NOMES_GRUPOS.map(()=>'—'), '—']]);
+  table('tblTempoColabAtividade', headersTbl, rowsTbl.length ? rowsTbl : [['Nenhum dado importado ainda.', ...categorias.map(()=>'—'), '—']]);
 
   const byAtividade = categorias.map(cat=>[cat, arr.filter(d=>d.categoria===cat).reduce((s,d)=>s+d.horas,0)]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);
   chart('chartTsAtividades','doughnut', byAtividade.map(x=>x[0]), byAtividade.map(x=>Number(x[1].toFixed(1))));
@@ -1730,6 +1746,23 @@ function atualizarComparativoColaboradores(){
   }
 }
 
+function atualizarPeriodoAposImportarTimesheet(){
+  const allDates = TIMESHEET_DATA.map(d=>d.data).filter(Boolean);
+  if(!allDates.length) return;
+  const period=document.getElementById('periodFilter');
+  if(period) period.value='custom';
+  const porMes = {};
+  allDates.forEach(d=>{ const m=d.slice(0,7); porMes[m]=(porMes[m]||0)+1; });
+  const mesMaisFrequente = Object.entries(porMes).sort((a,b)=> b[1]-a[1] || b[0].localeCompare(a[0]))[0][0];
+  const datasDoMes = allDates.filter(d=>d.startsWith(mesMaisFrequente)).sort();
+  const start = mesMaisFrequente+'-01';
+  const end = datasDoMes[datasDoMes.length-1];
+  const s=document.getElementById('dateStartFilter');
+  const e=document.getElementById('dateEndFilter');
+  if(s) s.value=start;
+  if(e) e.value=end;
+}
+
 function atualizarPeriodoDepoisImportacao(){
   const period=document.getElementById('periodFilter');
   if(period && !period.value) period.value='month';
@@ -2025,11 +2058,20 @@ async function sincronizarPipeRun(silencioso){
   }
 }
 
+function limparTimesheetPainel(){
+  if(!confirm('Isso vai apagar todos os dados de Tempo por Atividade já importados (as outras abas não são afetadas). Continuar?')) return;
+  TIMESHEET_DATA=[];
+  const status=document.getElementById('timesheetImportStatus');
+  if(status) status.textContent='Dados de Tempo por Atividade limpos. Importe um novo Excel para preencher esta aba.';
+  refresh();
+}
+
 function limparBasesPainel(){
   DATA=[];
   AGENDA_IMPORTADA=[];
   LOST_DATA=[];
   FATURAMENTO_DATA=[];
+  TIMESHEET_DATA=[];
   localStorage.removeItem('gaiga_tecnicos_reunioes');
   rebuildConsultorFilter();
   const s=document.getElementById('dateStartFilter');

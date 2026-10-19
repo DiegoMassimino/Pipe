@@ -9,12 +9,13 @@
 //   /api/piperun?resource=companies&page=1
 //   /api/piperun?resource=users
 //   /api/piperun?resource=stages&page=2
+//   /api/piperun?resource=cities&page=1
 //
 // Configuração necessária no Vercel:
 //   Project Settings → Environment Variables → adicionar PIPERUN_TOKEN
 //   com o valor do seu token do Pipe Run. Depois fazer um redeploy.
 
-const RECURSOS_PERMITIDOS = ['activities', 'deals', 'companies', 'users', 'stages'];
+const RECURSOS_PERMITIDOS = ['activities', 'deals', 'companies', 'users', 'stages', 'cities'];
 
 export default async function handler(req, res) {
   // CORS: permite que o painel (mesmo domínio do Vercel) chame esta rota.

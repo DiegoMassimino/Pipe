@@ -314,8 +314,17 @@ tr:hover td{background:rgba(255,255,255,.035)}
     </div>
 
     <div class="grid two" style="margin-top:16px">
-      <div class="card"><h3>Região com maior volume de contatos</h3><p class="meta" id="destaqueEstadoMaisProcurado" style="margin-bottom:10px"></p><canvas id="chartRegiao"></canvas></div>
       <div class="card"><h3>Produtos / serviços mais oferecidos</h3><p class="meta" id="destaqueServicoMaisOferecido" style="margin-bottom:10px"></p><canvas id="chartProdutosOferecidos"></canvas></div>
+      <div class="card"><h3>Volume por região</h3><p class="meta" id="destaqueRegiaoMaisProcurada" style="margin-bottom:10px"></p><canvas id="chartVolRegiao"></canvas></div>
+    </div>
+    <div class="grid two" style="margin-top:16px">
+      <div class="card"><h3>Volume por estado</h3><p class="meta" id="destaqueEstadoMaisProcurado" style="margin-bottom:10px"></p><canvas id="chartRegiao"></canvas></div>
+      <div class="card"><h3>Volume por cidade (top 10)</h3><p class="meta" id="destaqueCidadeMaisProcurada" style="margin-bottom:10px"></p><canvas id="chartVolCidade"></canvas></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Detalhe por cidade</h3>
+      <p class="meta" id="infoVolumeSemLocal" style="margin-bottom:10px"></p>
+      <div class="table-wrap"><table id="tblVolumeCidades"></table></div>
     </div>
 
   </section>
@@ -1195,6 +1204,77 @@ function applyPeriodPreset(){
 }
 
 function groupBy(arr, keyFn){ const m={}; arr.forEach(x=>{const k=keyFn(x)||'Não informado'; m[k]=(m[k]||0)+1;}); return m; }
+
+// ========== Volume por região / estado / cidade ==========
+const REGIAO_POR_UF = {
+  AC:'Norte', AP:'Norte', AM:'Norte', PA:'Norte', RO:'Norte', RR:'Norte', TO:'Norte',
+  AL:'Nordeste', BA:'Nordeste', CE:'Nordeste', MA:'Nordeste', PB:'Nordeste', PE:'Nordeste', PI:'Nordeste', RN:'Nordeste', SE:'Nordeste',
+  DF:'Centro-Oeste', GO:'Centro-Oeste', MT:'Centro-Oeste', MS:'Centro-Oeste',
+  ES:'Sudeste', MG:'Sudeste', RJ:'Sudeste', SP:'Sudeste',
+  PR:'Sul', RS:'Sul', SC:'Sul'
+};
+const UF_POR_NOME_ESTADO = {
+  'acre':'AC','amapa':'AP','amazonas':'AM','para':'PA','rondonia':'RO','roraima':'RR','tocantins':'TO',
+  'alagoas':'AL','bahia':'BA','ceara':'CE','maranhao':'MA','paraiba':'PB','pernambuco':'PE','piaui':'PI','rio grande do norte':'RN','sergipe':'SE',
+  'distrito federal':'DF','goias':'GO','mato grosso':'MT','mato grosso do sul':'MS',
+  'espirito santo':'ES','minas gerais':'MG','rio de janeiro':'RJ','sao paulo':'SP',
+  'parana':'PR','rio grande do sul':'RS','santa catarina':'SC'
+};
+function normalizarUF(valor){
+  const s = String(valor||'').trim();
+  if(!s) return '';
+  if(s.length === 2) return REGIAO_POR_UF[s.toUpperCase()] ? s.toUpperCase() : '';
+  return UF_POR_NOME_ESTADO[norm(s)] || '';
+}
+function regiaoDaUF(uf){ return REGIAO_POR_UF[uf] || ''; }
+
+function atualizarVolumeGeografico(arr){
+  const itens = arr.map(d=>({ d, uf: normalizarUF(d.uf), cidade: String(d.cidade||'').trim() }));
+  const comUF = itens.filter(x=>x.uf);
+
+  const agrega = (lista, keyFn) => {
+    const m = {};
+    lista.forEach(x=>{
+      const k = keyFn(x);
+      if(!k) return;
+      if(!m[k]) m[k] = { n:0, empresas:new Set(), uf:x.uf, cidade:x.cidade };
+      m[k].n++;
+      m[k].empresas.add(x.d.empresa);
+    });
+    return Object.entries(m).sort((a,b)=>b[1].n-a[1].n);
+  };
+
+  const porRegiao = agrega(comUF, x=>regiaoDaUF(x.uf));
+  const porEstado = agrega(comUF, x=>x.uf);
+  const porCidade = agrega(itens.filter(x=>x.cidade), x=>x.cidade + (x.uf ? ' / '+x.uf : ''));
+
+  chart('chartVolRegiao','doughnut', porRegiao.map(x=>x[0]), porRegiao.map(x=>x[1].n));
+  chart('chartRegiao','bar', porEstado.slice(0,15).map(x=>x[0]), porEstado.slice(0,15).map(x=>x[1].n));
+  chart('chartVolCidade','bar', porCidade.slice(0,10).map(x=>x[0]), porCidade.slice(0,10).map(x=>x[1].n));
+
+  const pct = (n, total) => total ? ((n/total)*100).toFixed(0).replace('.',',')+'%' : '0%';
+  const setTxt = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = html; };
+  setTxt('destaqueRegiaoMaisProcurada', porRegiao.length
+    ? `Região mais procurada: <b>${porRegiao[0][0]}</b> (${fmt.format(porRegiao[0][1].n)} registros, ${pct(porRegiao[0][1].n, comUF.length)})`
+    : 'Sem dados de estado no período.');
+  setTxt('destaqueEstadoMaisProcurado', porEstado.length
+    ? `Estado mais procurado: <b>${porEstado[0][0]}</b> (${fmt.format(porEstado[0][1].n)} registros, ${pct(porEstado[0][1].n, comUF.length)})`
+    : 'Sem dados de estado no período.');
+  setTxt('destaqueCidadeMaisProcurada', porCidade.length
+    ? `Cidade mais procurada: <b>${porCidade[0][0]}</b> (${fmt.format(porCidade[0][1].n)} registros)`
+    : 'Sem dados de cidade no período.');
+
+  const semLocal = itens.filter(x=>!x.uf && !x.cidade).length;
+  setTxt('infoVolumeSemLocal', arr.length
+    ? `${fmt.format(arr.length - semLocal)} de ${fmt.format(arr.length)} registros do período têm cidade ou estado informado${semLocal ? ` (${fmt.format(semLocal)} sem localização não entram nestes números)` : ''}.`
+    : '');
+
+  const linhas = porCidade.slice(0,30).map(([k,v])=>[
+    v.cidade, v.uf || '—', regiaoDaUF(v.uf) || '—', fmt.format(v.n), fmt.format(v.empresas.size), pct(v.n, itens.filter(x=>x.cidade).length)
+  ]);
+  table('tblVolumeCidades', ['Cidade','UF','Região','Registros','Empresas','% das cidades informadas'],
+    linhas.length ? linhas : [['Sem dados de cidade no período.','—','—','—','—','—']]);
+}
 function unique(arr, keyFn){ return new Set(arr.map(keyFn).filter(Boolean)).size; }
 function includesTipo(d, terms){ const n=norm(d.tipo); return terms.some(t=>n.includes(t)); }
 function filtered(){
@@ -1336,7 +1416,7 @@ function renderFunnelConversaoColab(arr){
   const ligacoes = base.filter(d=>includesTipo(d,['ligacao efetiva'])).length;
   const influenciadores = base.filter(d=>tipoExato(d,'Contato com Influenciador')).length;
   const decisores = base.filter(d=>tipoExato(d,'Contato com Decisor')).length;
-  const reunioes = base.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+  const reunioes = base.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length;
   const remarcacoes = base.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
 
   const contatosQualificados = ligacoes + influenciadores + decisores;
@@ -1384,7 +1464,7 @@ function rowsForIndicador(kind){
     tentativas:arr.filter(d=>includesTipo(d,['tentativa'])),
     influenciadores:arr.filter(d=>tipoExato(d,'Contato com Influenciador')),
     decisores:arr.filter(d=>tipoExato(d,'Contato com Decisor')),
-    reunioesAgendadas:arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])),
+    reunioesAgendadas:arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])),
     remarcacoes:arr.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])),
     reunioesRealizadas:arr.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])),
     noShow:arr.filter(d=>includesTipo(d,['no show'])),
@@ -1477,7 +1557,7 @@ function colabMetrics(nome, arr){
   const tentativas=a.filter(d=>includesTipo(d,['tentativa'])).length;
   const influenciadores=a.filter(d=>tipoExato(d,'Contato com Influenciador')).length;
   const decisores=a.filter(d=>tipoExato(d,'Contato com Decisor')).length;
-  const reunioesAgendadas=a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+  const reunioesAgendadas=a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length;
   const remarcacoes=a.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
   const reunioesRealizadas=a.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length;
   const noShow=a.filter(d=>includesTipo(d,['no show'])).length;
@@ -1543,7 +1623,7 @@ function metricasDoMes(mes){
   const novosContatos=arr.filter(d=>includesTipo(d,['novo contato'])).length;
   const influenciadores=arr.filter(d=>tipoExato(d,'Contato com Influenciador')).length;
   const decisores=arr.filter(d=>tipoExato(d,'Contato com Decisor')).length;
-  const reunioesAgendadas=arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+  const reunioesAgendadas=arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length;
   const remarcacoes=arr.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
   const reunioesRealizadas=arr.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length;
   const noShow=arr.filter(d=>includesTipo(d,['no show'])).length;
@@ -1791,7 +1871,7 @@ const TIPOS_REUNIAO_DATA_INICIO = [
   '1° reuniao','2° reuniao','3° reuniao','4° reuniao','5° reuniao',
   '1º reuniao','2º reuniao','3º reuniao','4º reuniao','5º reuniao',
   'remarcacao de agenda','reuniao realizada','reuniao com cliente','reuniao com o cliente',
-  'reuniao interna','reuniao externa'
+  'reuniao interna','reuniao externa','apresentacao de proposta'
 ];
 
 function normalizeGenericCRMRows(rows){
@@ -1898,6 +1978,7 @@ function handleGlobalImport(evt){
 
 // ========== Sincronização com Pipe Run (via proxy serverless /api/piperun) ==========
 const PIPERUN_PROXY_URL = '/api/piperun';
+let PIPERUN_CIDADES_CACHE = null; // id da cidade -> {nome, uf}; cidades não mudam, então baixa só uma vez por sessão
 
 async function piperunFetchPagina(resource, pagina, extra){
   const extraQS = extra ? '&' + extra : '';
@@ -1960,7 +2041,29 @@ async function sincronizarPipeRun(silencioso){
 
     const empresas = await piperunFetchTudo('companies', (p,tp,c,t)=>atualizarProgressoPiperun('Empresas', p, tp, c, t));
     const empresaPorId = {};
-    empresas.forEach(e=>{ empresaPorId[e.id] = e.name; });
+    const cidadeIdPorEmpresa = {};
+    empresas.forEach(e=>{ empresaPorId[e.id] = e.name; cidadeIdPorEmpresa[e.id] = e.city_id; });
+
+    // Cidades (nome + UF). Se esse endpoint falhar, a sincronização continua, só sem localização.
+    let cidadePorId = PIPERUN_CIDADES_CACHE;
+    let avisoCidades = '';
+    if(!cidadePorId){
+      try{
+        const cidades = await piperunFetchTudo('cities', (p,tp,c,t)=>atualizarProgressoPiperun('Cidades', p, tp, c, t));
+        cidadePorId = {};
+        cidades.forEach(c=>{ cidadePorId[c.id] = { nome: c.name, uf: c.uf }; });
+        if(cidades.length) PIPERUN_CIDADES_CACHE = cidadePorId;
+        else avisoCidades = ' Atenção: o Pipe Run não devolveu a lista de cidades, então o volume por região/estado/cidade ficou sem dados.';
+      }catch(erroCidades){
+        console.error('Falha ao buscar cidades do Pipe Run:', erroCidades);
+        cidadePorId = {};
+        avisoCidades = ' Atenção: não foi possível buscar as cidades (' + erroCidades.message + '), então o volume por região/estado/cidade ficou sem dados.';
+      }
+    }
+    const localDaEmpresa = (companyId) => {
+      const c = cidadePorId[cidadeIdPorEmpresa[companyId]];
+      return c ? { cidade: String(c.nome||'').trim(), uf: String(c.uf||'').trim() } : { cidade:'', uf:'' };
+    };
 
     const negociacoes = await piperunFetchTudo('deals', (p,tp,c,t)=>atualizarProgressoPiperun('Negociações', p, tp, c, t), 'with=tags');
     const dealPorId = {};
@@ -1997,8 +2100,8 @@ async function sincronizarPipeRun(silencioso){
         inicioHora: dtInicio && !isNaN(dtInicio) ? dtInicio.toISOString() : '',
         tag: tagDoDeal(deal) || 'Sem tag',
         empresa: String(empresa).trim(),
-        cidade: '',
-        uf: ''
+        cidade: localDaEmpresa(deal.company_id).cidade,
+        uf: localDaEmpresa(deal.company_id).uf
       };
     }).filter(d=>d.data && d.data >= dataCorteISO && d.data <= dataFimISO);
 
@@ -2039,13 +2142,13 @@ async function sincronizarPipeRun(silencioso){
     refresh();
 
     if(wrap) wrap.style.display = 'none';
-    if(status) status.textContent = `Sincronizado com Pipe Run em ${new Date().toLocaleString('pt-BR')}: ${novoData.length} atividades, ${novoLostData.length} oportunidades perdidas e ${novoFaturamentoData.length} contratos ganhos com valor. Salvando no banco...`;
+    if(status) status.textContent = `Sincronizado com Pipe Run em ${new Date().toLocaleString('pt-BR')}: ${novoData.length} atividades, ${novoLostData.length} oportunidades perdidas e ${novoFaturamentoData.length} contratos ganhos com valor. Salvando no banco...${avisoCidades}`;
 
     const resultadoSalvar = await salvarProjetoNoBanco();
 
     if(resultadoSalvar.ok){
-      if(status) status.textContent = `Sincronizado com Pipe Run e salvo no banco em ${new Date().toLocaleString('pt-BR')}: ${novoData.length} atividades e ${novoLostData.length} oportunidades perdidas.`;
-      if(!silencioso) alert('Sincronização com Pipe Run concluída e salva no banco com sucesso!');
+      if(status) status.textContent = `Sincronizado com Pipe Run e salvo no banco em ${new Date().toLocaleString('pt-BR')}: ${novoData.length} atividades e ${novoLostData.length} oportunidades perdidas.${avisoCidades}`;
+      if(!silencioso) alert('Sincronização com Pipe Run concluída e salva no banco com sucesso!' + avisoCidades);
     }else{
       if(status) status.textContent = `Sincronizado com Pipe Run, mas houve um erro ao salvar no banco automaticamente: ${resultadoSalvar.erro ? resultadoSalvar.erro.message : resultadoSalvar.motivo}. Clique em "Salvar Projeto" para tentar de novo.`;
       if(!silencioso) alert('Sincronização concluída, mas não foi possível salvar automaticamente no banco. Clique em "Salvar Projeto" para tentar de novo.');
@@ -2100,7 +2203,7 @@ function refresh(){
   document.getElementById('kpiPeriodo').textContent=dates.length ? `${dates[0].split('-').reverse().join('/')} a ${dates[dates.length-1].split('-').reverse().join('/')}` : 'Sem data';
   document.getElementById('kpiConsultores').textContent=fmt.format(unique(arr,d=>d.consultor));
   document.getElementById('kpiEmpresas').textContent=fmt.format(unique(arr,d=>d.empresa));
-  const reunAgendadasDash=arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+  const reunAgendadasDash=arr.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length;
   const reunRealizadasDash=arr.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length;
   const remarcacoesDash=arr.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
   const noShowDash=arr.filter(d=>includesTipo(d,['no show'])).length;
@@ -2135,15 +2238,8 @@ function refresh(){
       : 'Sem dados suficientes no período.';
   }
 
-  // Região com maior volume de contatos: ranking de estados (UF) — mostra o estado mais procurado
-  const byUf=topEntries(groupBy(arr.filter(d=>d.uf), d=>d.uf), 10);
-  chart('chartRegiao','bar',byUf.map(x=>x[0]),byUf.map(x=>x[1]));
-  const destaqueEstado = document.getElementById('destaqueEstadoMaisProcurado');
-  if(destaqueEstado){
-    destaqueEstado.innerHTML = byUf.length
-      ? `Estado mais procurado: <b>${byUf[0][0]}</b> (${fmt.format(byUf[0][1])} contatos)`
-      : 'Sem dados de estado no período.';
-  }
+  // Volume por região, estado e cidade
+  atualizarVolumeGeografico(arr);
 
   const ligEf=arr.filter(d=>includesTipo(d,['ligacao efetiva'])).length;
   const tent=arr.filter(d=>includesTipo(d,['tentativa'])).length;
@@ -2171,7 +2267,7 @@ function refresh(){
 
   const indRows=consultores.map(c=>{
     const a=arr.filter(d=>d.consultor===c);
-    return [c, fmt.format(a.length), fmt.format(a.filter(d=>includesTipo(d,['ligacao efetiva'])).length), fmt.format(a.filter(d=>includesTipo(d,['tentativa'])).length), fmt.format(a.filter(d=>tipoExato(d,'Contato com Influenciador')).length), fmt.format(a.filter(d=>tipoExato(d,'Contato com Decisor')).length), fmt.format(a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length), fmt.format(a.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length), fmt.format(a.filter(d=>includesTipo(d,['proposta'])).length), fmt.format(a.filter(d=>includesTipo(d,['minuta de contrato','contrato enviado'])).length), fmt.format(a.filter(d=>includesTipo(d,['contrato assinado'])).length)];
+    return [c, fmt.format(a.length), fmt.format(a.filter(d=>includesTipo(d,['ligacao efetiva'])).length), fmt.format(a.filter(d=>includesTipo(d,['tentativa'])).length), fmt.format(a.filter(d=>tipoExato(d,'Contato com Influenciador')).length), fmt.format(a.filter(d=>tipoExato(d,'Contato com Decisor')).length), fmt.format(a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length), fmt.format(a.filter(d=>includesTipo(d,['reuniao realizada','reuniao com cliente'])).length), fmt.format(a.filter(d=>includesTipo(d,['proposta'])).length), fmt.format(a.filter(d=>includesTipo(d,['minuta de contrato','contrato enviado'])).length), fmt.format(a.filter(d=>includesTipo(d,['contrato assinado'])).length)];
   }).sort((a,b)=>parseInt(b[1].replace(/\D/g,''))-parseInt(a[1].replace(/\D/g,'')));
   table('tblIndicadores',['Consultor','Registros','Ligações efetivas','Tentativas','Influenciadores','Decisores','Reuniões agendadas','Reuniões realizadas','Propostas enviadas','Contratos enviados','Contratos assinados'],indRows);
   const funilLabels=['Tentativas','Ligações efetivas','Influenciadores','Decisores','Reuniões agendadas','Remarcações','Reuniões realizadas','No Show','Reuniões canceladas','Propostas enviadas','Contratos enviados','Contratos assinados'];
@@ -2203,7 +2299,7 @@ function refresh(){
     const ligacoes=a.filter(d=>includesTipo(d,['ligacao efetiva'])).length;
     const influenciadores=a.filter(d=>tipoExato(d,'Contato com Influenciador')).length;
     const decisores=a.filter(d=>tipoExato(d,'Contato com Decisor')).length;
-    const reunioes=a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao'])).length;
+    const reunioes=a.filter(d=>includesTipo(d,['reuniao agendada','1° reuniao','1º reuniao','2° reuniao','2º reuniao','3° reuniao','3º reuniao','4° reuniao','4º reuniao','5° reuniao','5º reuniao','apresentacao de proposta'])).length;
     const remarcacoes=a.filter(d=>includesTipo(d,['remarcacao de agenda','remarcacao','reagendada'])).length;
     const reunioesComRemarcacao = reunioes + remarcacoes;
     const baseContatosQualificados = ligacoes + decisores + influenciadores;
@@ -2273,7 +2369,8 @@ function refresh(){
     '3° reuniao','3º reuniao',
     '4° reuniao','4º reuniao',
     '5° reuniao','5º reuniao',
-    'remarcacao de agenda'
+    'remarcacao de agenda',
+    'apresentacao de proposta'
   ]));
 
   const semanaAtualAgenda = obterSemanaAtual();
